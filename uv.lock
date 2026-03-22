@@ -124,7 +124,7 @@ wheels = [
 ]
 
 [[package]]
-name = "amc-study"
+name = "amc-quiz"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
