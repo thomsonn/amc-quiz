@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+
+# RAG index cache
+storage/
+chroma_db/
+
+# Study data
+study_data.db
+
+# Large files
+*.pdf

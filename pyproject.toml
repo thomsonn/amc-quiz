@@ -1,0 +1,25 @@
+[project]
+name = "amc-quiz"
+version = "0.1.0"
+description = "AMC exam study tool with MCQ generation and spaced repetition"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.5.5",
+    "llama-index>=0.14.18",
+    "llama-index-vector-stores-chroma>=0.5.5",
+    "openai",
+    "pymupdf>=1.27.2.2",
+    "python-dotenv>=1.2.2",
+    "textual>=0.80.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[project.scripts]
+amc-quiz = "main:main"

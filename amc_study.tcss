@@ -1,0 +1,301 @@
+/* AMC Study Tool — Textual TUI Stylesheet */
+
+/* ── Global ── */
+
+Screen {
+    align: center middle;
+}
+
+#app-title {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    padding: 1 0;
+    width: 100%;
+}
+
+/* ── HomeScreen ── */
+
+HomeScreen {
+    align: center middle;
+}
+
+HomeScreen > #menu-container {
+    width: 50;
+    height: auto;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+HomeScreen #home-menu {
+    height: auto;
+}
+
+HomeScreen #due-count {
+    color: $warning;
+    text-style: bold;
+}
+
+/* ── StudyScreen ── */
+
+StudyScreen > #study-container {
+    width: 70;
+    height: 80%;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+StudyScreen Input {
+    margin: 0 0 1 0;
+}
+
+StudyScreen ListView {
+    height: 1fr;
+}
+
+/* ── QuizLoadingScreen ── */
+
+QuizLoadingScreen {
+    align: center middle;
+}
+
+QuizLoadingScreen > #loading-container {
+    width: 50;
+    min-width: 50;
+    height: auto;
+    padding: 2 4;
+    border: round $accent;
+    background: $surface;
+    align: center middle;
+}
+
+QuizLoadingScreen #loading-art {
+    text-align: center;
+    padding: 1 0;
+}
+
+QuizLoadingScreen #loading-text {
+    text-align: center;
+    padding: 1 0;
+}
+
+QuizLoadingScreen LoadingIndicator {
+    height: 3;
+}
+
+/* ── QuestionScreen ── */
+
+QuestionScreen {
+    align: center middle;
+}
+
+QuestionScreen > #question-container {
+    width: 80;
+    max-width: 100%;
+    height: auto;
+    max-height: 100%;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+    overflow-y: auto;
+}
+
+QuestionScreen #q-header {
+    text-style: bold;
+    color: $accent;
+    padding: 0 0 1 0;
+}
+
+QuestionScreen #progress-bar {
+    color: $accent;
+    padding: 0 0 1 0;
+}
+
+QuestionScreen #q-stem {
+    padding: 0 0 1 0;
+}
+
+QuestionScreen .option {
+    padding: 0 0 0 2;
+}
+
+QuestionScreen .option.highlighted {
+    background: $accent 30%;
+    text-style: bold;
+}
+
+QuestionScreen #answer-input {
+    margin: 1 0 0 0;
+}
+
+QuestionScreen #feedback {
+    margin: 1 0;
+    padding: 1;
+    border: tall transparent;
+}
+
+QuestionScreen #feedback.correct {
+    border: tall $success;
+    color: $success;
+}
+
+QuestionScreen #feedback.incorrect {
+    border: tall $error;
+    color: $error;
+}
+
+QuestionScreen #feedback.partial {
+    border: tall $warning;
+    color: $warning;
+}
+
+QuestionScreen #explanation {
+    padding: 0 1;
+    color: $text-muted;
+}
+
+QuestionScreen #nav-hint {
+    text-align: center;
+    color: $text-muted;
+    padding: 1 0 0 0;
+}
+
+/* ── QuizResultsScreen ── */
+
+QuizResultsScreen {
+    align: center middle;
+}
+
+QuizResultsScreen > #results-container {
+    width: 50;
+    height: auto;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+QuizResultsScreen #results-art {
+    text-align: center;
+    padding: 1 0;
+}
+
+QuizResultsScreen #results-title {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    padding: 0 0 1 0;
+}
+
+QuizResultsScreen #score-line {
+    text-align: center;
+    text-style: bold;
+    padding: 1 0;
+}
+
+QuizResultsScreen .result-detail {
+    padding: 0 1;
+}
+
+QuizResultsScreen #return-hint {
+    text-align: center;
+    color: $text-muted;
+    padding: 1 0 0 0;
+}
+
+/* ── ReviewScreen ── */
+
+ReviewScreen {
+    align: center middle;
+}
+
+ReviewScreen > #review-container {
+    width: 60;
+    height: auto;
+    max-height: 80%;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+ReviewScreen #empty-message {
+    text-align: center;
+    color: $text-muted;
+    padding: 2 0;
+}
+
+ReviewScreen ListView {
+    height: auto;
+    max-height: 20;
+}
+
+/* ── ProgressScreen ── */
+
+ProgressScreen {
+    align: center middle;
+}
+
+ProgressScreen > #progress-container {
+    width: 90;
+    max-width: 100%;
+    height: 80%;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+ProgressScreen DataTable {
+    height: 1fr;
+}
+
+ProgressScreen #totals {
+    text-style: bold;
+    padding: 1 0 0 0;
+}
+
+/* ── QAScreen ── */
+
+QAScreen {
+    align: center middle;
+}
+
+QAScreen > #qa-container {
+    width: 80;
+    max-width: 100%;
+    height: 80%;
+    padding: 1 2;
+    border: round $accent;
+    background: $surface;
+}
+
+QAScreen #qa-title {
+    text-style: bold;
+    color: $accent;
+    padding: 0 0 1 0;
+}
+
+QAScreen #chat-log {
+    height: 1fr;
+    border: tall $surface-lighten-2;
+    padding: 0 1;
+}
+
+QAScreen .q-msg {
+    color: $accent;
+    padding: 1 0 0 0;
+}
+
+QAScreen .a-msg {
+    padding: 0 0 1 0;
+}
+
+QAScreen #qa-input {
+    margin: 1 0 0 0;
+}
+
+QAScreen #index-placeholder {
+    text-align: center;
+    color: $text-muted;
+    padding: 2 0;
+}
