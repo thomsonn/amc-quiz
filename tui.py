@@ -222,16 +222,40 @@ class StudyScreen(Screen):
 
 
 class QuizLoadingScreen(Screen):
+    """Shown while generating/waiting for the next question.
+
+    Two modes:
+    - Initial: no *bank* — generates the first question, then switches to QuestionScreen.
+    - Waiting: *bank* provided — just shows art until QuestionsReady arrives.
+    """
+
     BINDINGS = [("escape", "go_back", "Cancel")]
 
-    def __init__(self, topic_name: str, chapter_num: str | None = None, review_mode: bool = False):
+    def __init__(
+        self,
+        topic_name: str,
+        chapter_num: str | None = None,
+        review_mode: bool = False,
+        # waiting-mode params (between questions)
+        bank: QuestionBank | None = None,
+        next_idx: int = 0,
+        total_score: float = 0.0,
+    ):
         super().__init__()
         self.topic_name = topic_name
         self.chapter_num = chapter_num
         self.review_mode = review_mode
+        self.bank = bank
+        self.next_idx = next_idx
+        self.total_score = total_score
 
     def compose(self):
-        label = "Preparing review" if self.review_mode else "Generating questions"
+        if self.bank is not None:
+            label = "Generating next question"
+        elif self.review_mode:
+            label = "Preparing review"
+        else:
+            label = "Generating question"
         art_text = get_art(self.topic_name, self.chapter_num)
         yield Header()
         with Container(id="loading-container"):
@@ -241,7 +265,32 @@ class QuizLoadingScreen(Screen):
         yield Footer()
 
     def on_mount(self):
-        self._generate()
+        if self.bank is None:
+            self._generate()
+        elif self.next_idx < self.bank.available() or self.bank.is_done:
+            # Questions arrived before we mounted — proceed immediately
+            self._proceed()
+
+    def on_questions_ready(self, event: QuestionsReady):
+        """Handle background questions arriving (waiting mode)."""
+        if self.bank is not None:
+            self._proceed()
+
+    def _proceed(self):
+        if self.next_idx < self.bank.available():
+            self.app.switch_screen(
+                QuestionScreen(
+                    self.topic_name,
+                    self.bank,
+                    self.next_idx,
+                    self.total_score,
+                    review_mode=self.review_mode,
+                )
+            )
+        elif self.bank.is_done:
+            self.app.switch_screen(
+                QuizResultsScreen(self.topic_name, self.total_score, len(self.bank))
+            )
 
     @work(thread=True)
     def _generate(self):
@@ -342,8 +391,6 @@ class QuestionScreen(Screen):
         self.q = bank[current_idx]
         self.topic_row = get_or_create_topic(topic_name)
         self._score = 0.0
-        self._waiting = False
-        self._waiting_score = 0.0
         self._arguing = False
         self._argue_used = False
         self._qid: int | None = None
@@ -492,12 +539,6 @@ class QuestionScreen(Screen):
             event.prevent_default()
             self._start_argue()
 
-    def on_questions_ready(self, event: QuestionsReady):
-        """Handle background questions arriving."""
-        if self._waiting:
-            self._waiting = False
-            self._proceed_to_next(self._waiting_score)
-
     def _next(self):
         new_total = self.total_score + self._score
         next_idx = self.current_idx + 1
@@ -511,17 +552,6 @@ class QuestionScreen(Screen):
 
         # Next question available
         if next_idx < self.bank.available():
-            self._proceed_to_next(new_total)
-            return
-
-        # Not ready yet — wait for QuestionsReady message
-        self._waiting = True
-        self._waiting_score = new_total
-        self.query_one("#nav-hint", Static).update("Generating next question...")
-
-    def _proceed_to_next(self, new_total: float):
-        next_idx = self.current_idx + 1
-        if next_idx < self.bank.available():
             self.app.switch_screen(
                 QuestionScreen(
                     self.topic_name,
@@ -531,10 +561,18 @@ class QuestionScreen(Screen):
                     review_mode=self.review_mode,
                 )
             )
-        elif self.bank.is_done:
-            self.app.switch_screen(
-                QuizResultsScreen(self.topic_name, new_total, len(self.bank))
+            return
+
+        # Not ready yet — show loading screen while waiting
+        self.app.switch_screen(
+            QuizLoadingScreen(
+                self.topic_name,
+                bank=self.bank,
+                next_idx=next_idx,
+                total_score=new_total,
+                review_mode=self.review_mode,
             )
+        )
 
     def _start_argue(self):
         """Enter argue mode — re-enable input for the user to type their argument."""
@@ -909,7 +947,7 @@ class AMCStudyApp(App):
 
     def _notify_questions_ready(self):
         screen = self.screen
-        if isinstance(screen, QuestionScreen):
+        if isinstance(screen, (QuestionScreen, QuizLoadingScreen)):
             screen.post_message(QuestionsReady())
 
     def watch_index_ready(self, ready: bool):
