@@ -205,6 +205,7 @@ Each question must:
 - Have exactly one correct answer
 - Include a brief explanation of why the correct answer is right
 - Be directly relevant to the topic: {topic}
+- Prefer treatment and management questions (e.g. "What is the most appropriate management?", "Which treatment should be initiated?") over purely diagnostic questions. Some diagnostic questions are acceptable for variety, but the majority should test management decisions.
 
 Return your response as JSON:
 {{
