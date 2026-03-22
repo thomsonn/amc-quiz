@@ -237,7 +237,12 @@ def retrieve_context(index: VectorStoreIndex, topic: str, chapter_num: str | Non
 
 
 def generate_mcqs(
-    index: VectorStoreIndex, topic: str, chapter_num: str | None = None, n: int = 5, context: str | None = None
+    index: VectorStoreIndex,
+    topic: str,
+    chapter_num: str | None = None,
+    n: int = 5,
+    context: str | None = None,
+    existing_questions: list[dict] | None = None,
 ) -> list[dict]:
     """Generate n AMC-style MCQs for a topic."""
     if context is None:
@@ -252,6 +257,18 @@ def generate_mcqs(
         {"role": "system", "content": "You generate AMC exam questions in JSON format."},
         {"role": "user", "content": MCQ_PROMPT.format(n=n, topic=topic, context=context)},
     ]
+
+    if existing_questions:
+        stems = "\n".join(f"- {q['stem']}" for q in existing_questions)
+        messages.append({
+            "role": "user",
+            "content": (
+                "IMPORTANT: The following questions have already been generated. "
+                "Do NOT repeat the same clinical scenario, diagnosis, or management concept. "
+                "Each new question must test a different aspect of the topic.\n\n"
+                f"Already generated:\n{stems}"
+            ),
+        })
 
     for attempt in range(2):
         response = client.chat.completions.create(

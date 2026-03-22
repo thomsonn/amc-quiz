@@ -271,7 +271,7 @@ class QuizLoadingScreen(Screen):
                 return
 
             bank = QuestionBank(first)
-            self.app.call_from_thread(self._on_success, bank, context)
+            self.app.call_from_thread(self._on_success, bank, context, first)
         except Exception as e:
             self.app.call_from_thread(self._on_failure, str(e))
 
@@ -282,7 +282,7 @@ class QuizLoadingScreen(Screen):
 
         new_qs = []
         if num_new > 0:
-            new_qs = generate_mcqs(index, self.topic_name, chapter_num=self.chapter_num, n=num_new)
+            new_qs = generate_mcqs(index, self.topic_name, chapter_num=self.chapter_num, n=num_new, existing_questions=old_qs)
             for q in new_qs:
                 q["is_review"] = False
 
@@ -290,13 +290,13 @@ class QuizLoadingScreen(Screen):
         random.shuffle(combined)
         return combined
 
-    def _on_success(self, bank: QuestionBank, context: str | None):
+    def _on_success(self, bank: QuestionBank, context: str | None, first: list[dict] | None = None):
         self.app.switch_screen(
             QuestionScreen(self.topic_name, bank, current_idx=0, total_score=0.0, review_mode=self.review_mode)
         )
         # Kick off background generation of remaining questions on the App
         if context is not None:
-            self.app.generate_remaining(bank, self.topic_name, self.chapter_num, context)
+            self.app.generate_remaining(bank, self.topic_name, self.chapter_num, context, first or [])
 
     def _on_failure(self, message: str):
         self.notify(message, severity="error")
@@ -442,9 +442,10 @@ class QuestionScreen(Screen):
         save_attempt(qid, raw, self._score)
         update_question_after_attempt(qid, self._score)
 
-        # Disable input, show navigation hint
+        # Disable input and remove focus so Enter key bubbles to on_key
         inp = self.query_one("#answer-input", Input)
         inp.disabled = True
+        self.set_focus(None)
         self.show_feedback = True
 
         is_last = self.bank.is_done and self.current_idx >= len(self.bank) - 1
@@ -792,10 +793,10 @@ class AMCStudyApp(App):
         self.index_ready = True
 
     @work(thread=True)
-    def generate_remaining(self, bank: QuestionBank, topic: str, chapter_num: str | None, context: str):
+    def generate_remaining(self, bank: QuestionBank, topic: str, chapter_num: str | None, context: str, existing_questions: list[dict] | None = None):
         """Generate remaining questions in background after first question is shown."""
         try:
-            remaining = generate_mcqs(self.index, topic, chapter_num=chapter_num, n=4, context=context)
+            remaining = generate_mcqs(self.index, topic, chapter_num=chapter_num, n=4, context=context, existing_questions=existing_questions)
             if remaining:
                 bank.extend(remaining)
             bank.mark_done()
