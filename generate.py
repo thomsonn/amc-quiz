@@ -236,6 +236,83 @@ def retrieve_context(index: VectorStoreIndex, topic: str, chapter_num: str | Non
         return retrieve_chunks_by_topic(index, topic, n=15)
 
 
+ARGUE_PROMPT = """You are a strict AMC examiner defending the marking scheme. A candidate is challenging their mark. Your default position is that the marking scheme is correct — override it ONLY with clear medical evidence.
+
+QUESTION:
+{stem}
+
+A) {option_a}
+B) {option_b}
+C) {option_c}
+D) {option_d}
+
+MARKED CORRECT ANSWER: {correct_answer}
+CANDIDATE'S ANSWER: {student_answer}
+CANDIDATE'S ARGUMENT: {argument}
+
+TEXTBOOK EXCERPTS (same source used to write the question):
+---
+{context}
+---
+
+RULING CRITERIA — accept the challenge ONLY if ALL of the following hold:
+1. The candidate's chosen answer is medically defensible for the specific clinical scenario presented
+2. The textbook excerpts or established medical consensus support the candidate's answer
+3. The marked answer is either incorrect or the question is genuinely ambiguous (two options are equally valid)
+
+REJECT the challenge if:
+- The candidate is rationalising a wrong answer with tangential reasoning
+- The candidate's answer is plausible in general but wrong for this specific clinical scenario
+- The candidate is confusing related but distinct concepts
+- The marked answer is clearly the BEST answer even if the candidate's answer has some merit
+
+Return JSON:
+{{
+  "accepted": true/false,
+  "explanation": "Your ruling with specific references to the textbook content or clinical reasoning. If rejecting, explain why the marked answer is correct and where the candidate's reasoning fails."
+}}"""
+
+
+def adjudicate_argument(
+    question: dict,
+    student_answer: str,
+    argument: str,
+    context: str,
+) -> dict:
+    """Let GPT adjudicate a student's argument against a marked answer.
+
+    Returns {"accepted": bool, "explanation": str}.
+    """
+    if not context or not context.strip():
+        context = "(No textbook excerpts available)"
+
+    prompt = ARGUE_PROMPT.format(
+        stem=question["stem"],
+        option_a=question["option_a"],
+        option_b=question["option_b"],
+        option_c=question["option_c"],
+        option_d=question["option_d"],
+        correct_answer=question["correct_answer"],
+        student_answer=student_answer,
+        argument=argument,
+        context=context,
+    )
+
+    client = OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "You are a strict medical exam adjudicator who defends the marking scheme. Only overturn a mark when the evidence is unambiguous. Return JSON."},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    try:
+        return json.loads(response.choices[0].message.content)
+    except (json.JSONDecodeError, KeyError):
+        return {"accepted": False, "explanation": "Could not evaluate the argument. Try again."}
+
+
 def generate_mcqs(
     index: VectorStoreIndex,
     topic: str,

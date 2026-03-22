@@ -38,10 +38,11 @@ from db import (
     init_db,
     save_attempt,
     save_question,
+    update_last_attempt_argued,
     update_question_after_attempt,
     update_topic_after_quiz,
 )
-from generate import CHAPTERS, generate_mcqs, get_index, resolve_topic, retrieve_context
+from generate import CHAPTERS, adjudicate_argument, generate_mcqs, get_index, resolve_topic, retrieve_context
 from quiz import is_uncertain, parse_answer, score_answer
 from review import build_review_quiz
 
@@ -52,10 +53,11 @@ from review import build_review_quiz
 class QuestionBank:
     """Thread-safe container for progressively-loaded questions."""
 
-    def __init__(self, initial: list[dict] | None = None):
+    def __init__(self, initial: list[dict] | None = None, context: str | None = None):
         self._questions: list[dict] = list(initial or [])
         self._lock = threading.Lock()
         self._done = threading.Event()
+        self.context: str | None = context
 
     def extend(self, qs: list[dict]):
         with self._lock:
@@ -250,11 +252,12 @@ class QuizLoadingScreen(Screen):
                 return
 
             if self.review_mode:
+                context = retrieve_context(index, self.topic_name, self.chapter_num)
                 questions = self._build_review(index)
                 if not questions:
                     self.app.call_from_thread(self._on_failure, "No questions generated. Try a different topic.")
                     return
-                bank = QuestionBank(questions)
+                bank = QuestionBank(questions, context=context)
                 bank.mark_done()
                 self.app.call_from_thread(self._on_success, bank, None)
                 return
@@ -270,7 +273,7 @@ class QuizLoadingScreen(Screen):
                 self.app.call_from_thread(self._on_failure, "No questions generated. Try a different topic.")
                 return
 
-            bank = QuestionBank(first)
+            bank = QuestionBank(first, context=context)
             self.app.call_from_thread(self._on_success, bank, context, first)
         except Exception as e:
             self.app.call_from_thread(self._on_failure, str(e))
@@ -341,6 +344,10 @@ class QuestionScreen(Screen):
         self._score = 0.0
         self._waiting = False
         self._waiting_score = 0.0
+        self._arguing = False
+        self._argue_used = False
+        self._qid: int | None = None
+        self._user_answer: str = ""
 
     def compose(self):
         total = 5 if not self.bank.is_done else len(self.bank)
@@ -394,7 +401,9 @@ class QuestionScreen(Screen):
                 self.selected_option = -1
 
     def on_input_submitted(self, event: Input.Submitted):
-        if event.input.id == "answer-input" and not self.show_feedback:
+        if event.input.id == "answer-input" and self._arguing:
+            self._submit_argument(event.value)
+        elif event.input.id == "answer-input" and not self.show_feedback:
             self._submit_answer(event.value)
 
     def _submit_answer(self, raw: str):
@@ -441,6 +450,8 @@ class QuestionScreen(Screen):
             qid = save_question(self.topic_row["id"], self.q)
         save_attempt(qid, raw, self._score)
         update_question_after_attempt(qid, self._score)
+        self._qid = qid
+        self._user_answer = raw
 
         # Disable input and remove focus so Enter key bubbles to on_key
         inp = self.query_one("#answer-input", Input)
@@ -449,10 +460,11 @@ class QuestionScreen(Screen):
         self.show_feedback = True
 
         is_last = self.bank.is_done and self.current_idx >= len(self.bank) - 1
+        argue_hint = "  |  [b]a[/b] to argue" if self._score < 1.0 and not self._argue_used else ""
         if is_last:
-            hint = "Press [b]Enter[/b] for results  |  [b]d[/b] to discuss  |  [b]Escape[/b] to quit"
+            hint = f"Press [b]Enter[/b] for results  |  [b]d[/b] to discuss{argue_hint}  |  [b]Escape[/b] to quit"
         else:
-            hint = "Press [b]Enter[/b] for next question  |  [b]d[/b] to discuss  |  [b]Escape[/b] to quit"
+            hint = f"Press [b]Enter[/b] for next question  |  [b]d[/b] to discuss{argue_hint}  |  [b]Escape[/b] to quit"
         self.query_one("#nav-hint", Static).update(hint)
 
     def on_key(self, event):
@@ -476,6 +488,9 @@ class QuestionScreen(Screen):
         elif event.key == "d":
             event.prevent_default()
             self._discuss()
+        elif event.key == "a" and self._score < 1.0 and not self._arguing and not self._argue_used:
+            event.prevent_default()
+            self._start_argue()
 
     def on_questions_ready(self, event: QuestionsReady):
         """Handle background questions arriving."""
@@ -521,6 +536,76 @@ class QuestionScreen(Screen):
                 QuizResultsScreen(self.topic_name, new_total, len(self.bank))
             )
 
+    def _start_argue(self):
+        """Enter argue mode — re-enable input for the user to type their argument."""
+        self._arguing = True
+        inp = self.query_one("#answer-input", Input)
+        inp.value = ""
+        inp.placeholder = "Type your argument..."
+        inp.disabled = False
+        inp.focus()
+        self.query_one("#nav-hint", Static).update("Type your argument and press [b]Enter[/b]  |  [b]Escape[/b] to cancel")
+
+    def _submit_argument(self, text: str):
+        text = text.strip()
+        if not text:
+            return
+        inp = self.query_one("#answer-input", Input)
+        inp.disabled = True
+        self.set_focus(None)
+        self.query_one("#nav-hint", Static).update("Evaluating your argument...")
+        self._run_adjudication(text)
+
+    @work(thread=True)
+    def _run_adjudication(self, argument: str):
+        try:
+            context = self.bank.context or ""
+            result = adjudicate_argument(
+                question=self.q,
+                student_answer=self._user_answer,
+                argument=argument,
+                context=context,
+            )
+            self.app.call_from_thread(self._on_adjudication_result, result, argument)
+        except Exception as e:
+            self.app.call_from_thread(self._on_adjudication_result, {
+                "accepted": False,
+                "explanation": f"Error: {e}",
+            }, argument)
+
+    def _on_adjudication_result(self, result: dict, argument: str):
+        self._arguing = False
+        self._argue_used = True
+        feedback_el = self.query_one("#feedback", Static)
+        explanation_el = self.query_one("#explanation", Static)
+        accepted = bool(result.get("accepted"))
+        original_score = self._score
+        new_score = 1.0 if accepted else self._score
+
+        if accepted:
+            self._score = 1.0
+            feedback_el.remove_class("incorrect", "partial")
+            feedback_el.add_class("correct")
+            feedback_el.update(f"Argument accepted! Score updated to {self._score}")
+            if self._qid:
+                update_last_attempt_argued(self._qid, self._score, argument)
+                update_question_after_attempt(self._qid, self._score)
+        else:
+            feedback_el.update(f"Argument not accepted. ({self._score})")
+            if self._qid:
+                ruling = result.get("explanation", "")
+                update_last_attempt_argued(self._qid, self._score, f"[rejected] {argument} — {ruling}")
+
+        explanation_el.update(result.get("explanation", ""))
+
+        # Restore nav hints
+        is_last = self.bank.is_done and self.current_idx >= len(self.bank) - 1
+        if is_last:
+            hint = "Press [b]Enter[/b] for results  |  [b]d[/b] to discuss  |  [b]Escape[/b] to quit"
+        else:
+            hint = "Press [b]Enter[/b] for next question  |  [b]d[/b] to discuss  |  [b]Escape[/b] to quit"
+        self.query_one("#nav-hint", Static).update(hint)
+
     def _discuss(self):
         context = (
             f"Question: {self.q['stem']}\n"
@@ -532,6 +617,22 @@ class QuestionScreen(Screen):
         self.app.push_screen(QAScreen(seed_context=context, seed_topic=self.topic_name))
 
     def action_go_home(self):
+        if self._arguing:
+            # Cancel argue mode instead of quitting
+            self._arguing = False
+            inp = self.query_one("#answer-input", Input)
+            inp.disabled = True
+            inp.placeholder = "A-D or explain in your own words"
+            self.set_focus(None)
+            # Restore nav hints
+            is_last = self.bank.is_done and self.current_idx >= len(self.bank) - 1
+            argue_hint = "  |  [b]a[/b] to argue" if self._score < 1.0 and not self._argue_used else ""
+            if is_last:
+                hint = f"Press [b]Enter[/b] for results  |  [b]d[/b] to discuss{argue_hint}  |  [b]Escape[/b] to quit"
+            else:
+                hint = f"Press [b]Enter[/b] for next question  |  [b]d[/b] to discuss{argue_hint}  |  [b]Escape[/b] to quit"
+            self.query_one("#nav-hint", Static).update(hint)
+            return
         self.app.switch_screen(HomeScreen())
 
 

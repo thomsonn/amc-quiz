@@ -55,9 +55,14 @@ def init_db():
                 user_answer TEXT NOT NULL,
                 score REAL NOT NULL,
                 attempted_at TEXT NOT NULL,
+                argued TEXT,
                 FOREIGN KEY (question_id) REFERENCES questions(id)
             );
         """)
+        # Migrate: add argued column if missing
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(attempts)").fetchall()]
+        if "argued" not in cols:
+            conn.execute("ALTER TABLE attempts ADD COLUMN argued TEXT")
         conn.commit()
 
 
@@ -97,6 +102,17 @@ def save_attempt(question_id: int, user_answer: str, score: float):
         conn.execute(
             "INSERT INTO attempts (question_id, user_answer, score, attempted_at) VALUES (?, ?, ?, ?)",
             (question_id, user_answer, score, datetime.now().isoformat()),
+        )
+        conn.commit()
+
+
+def update_last_attempt_argued(question_id: int, new_score: float, argued: str):
+    """Update the most recent attempt with argue result and new score."""
+    with _connect() as conn:
+        conn.execute(
+            """UPDATE attempts SET score = ?, argued = ?
+               WHERE id = (SELECT id FROM attempts WHERE question_id = ? ORDER BY attempted_at DESC LIMIT 1)""",
+            (new_score, argued, question_id),
         )
         conn.commit()
 
